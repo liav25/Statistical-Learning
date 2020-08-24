@@ -1,0 +1,12 @@
+name: "r"
+output_dir: "docs"
+navbar:
+  title: "Statistical Learning Exercises"
+  left:
+  - text: "Home"
+   href: index.html
+  - text: "MNIST Data"
+   href: mnist.html
+output:
+  html_document:
+ theme: cosmo
