@@ -1,14 +1,6 @@
+<<<<<<< HEAD
 ---
 title: "Lab 4 - Mnist Data"
-knit: (function(input_file, encoding) {
-  out_dir <- 'docs';
-  rmarkdown::render(input_file,
- encoding=encoding,
- output_file=file.path(dirname(input_file), out_dir, 'index.html'))})
-author: "Liav Alter and Yedidia Weilner"
-date: "24 באוגוסט 2020"
-output: html_document
-
 ---
 
 ```{r Librarys, message=FALSE, warning=FALSE, include=FALSE}
@@ -437,4 +429,445 @@ draw_confusion_matrix(round(neg_cm_lasso/rowSums(neg_cm_lasso),4),"Logistic Nega
 - As seen in the table our model completely fails to correctely classify the 1's. More specifically, both classifiers almost always classify a digit as `7` regardless the actual value.
 
 
+=======
+---
+title: "Lab 4 - Mnist Data"
+knit: (function(input_file, encoding) {
+  out_dir <- 'docs';
+  rmarkdown::render(input_file,
+ encoding=encoding,
+ output_file=file.path(dirname(input_file), out_dir, 'index.html'))})
+author: "Liav Alter and Yedidia Weilner"
+date: "24 באוגוסט 2020"
+output: html_document
+
+---
+
+```{r Librarys, message=FALSE, warning=FALSE, include=FALSE}
+#library(reticulate)
+library(tibble)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(MASS)
+library(RCurl)
+
+library(patchwork)
+library(lda) # Linear Discrimination Analysis
+library(e1071) # Naive Bayes Classifier
+library(caret)
+library(glmnet)
+library(data.table)
+library(class)
+
+library(latex2exp)
+library(htmltools)
+library(plotly)
+
+```
+
+
+---
+
+### 1 - Classification Lab - Loading the `MNIST` dataset
+
+<br>
+
+```{r load_MNIST, echo=TRUE, message=FALSE, warning=FALSE}
+
+source("load_MNIST.R")
+
+# filter digits 1 and 7
+train_data = train_data %>% subset(y==1 | y==7)
+test_data = test_data %>% subset(y==1 | y==7)
+
+#set new factors 1,7 instead of 0 to 9
+train_data$y = factor(train_data$y, levels = c(1,7), labels = c(1,7)) 
+test_data$y = factor(test_data$y, levels = c(1,7), labels = c(1,7)) 
+
+#create X train matrix. 
+X_train = train_data[,-785]
+#create y train boolean vector
+y_train = ifelse(train_data$y==1, 1, 0)
+
+#create X test 
+X_test = test_data[,-785]
+#create y test boolean vector
+y_test = ifelse(test_data$y==1, 1, 0)
+
+```
+
+<br>
+We used the handwritten digits data MNIST, and filtered the classes `1` and `7`. Our mission is to compare 2 methods of classification, and explore each of them while using confusion matrices and ROC curves. 
+
+<br>
+
+##### 1.1 Choosing 2 methods of classification
+
+<br>
+- We chose to implement the following classifiers:<br>
+  1. **Naive Bayes:** Since it fast for both training and making predictions (our data is in large dimensions), and it doesn't require any parameter tuning. <br> 
+  2. **Logistic Regression** - with Lasso regularization: Since we are working with high dimensional data, it doesn't require much preprocessing and it can help reduce overfitting in the model. We chose the lambda that minimized the Lasso $L_1$ penalty over the formula below, using a 10-fold Cross-Validation over MSE loss using the glmnet package.<br>
+
+$\underset{\beta}{\mathrm{argmin}} \sum^{n}_{i=1}[y_ix_i\beta-log(1+e^{x_i\beta})] + \lambda\sum_{j=1}^p|\beta_j|$ 
+
+<br>
+**Note: while preproccesing the data, we chose (arbitrarily) `1`to be tagged as 1 (Positive) and `7`to be tagged as 0 (Negative). We did it arbitrarily becuase there is no meaning for type I and II errors here (classifying 1 instead of 7 is not worse than classifying 7 instead of 1. **
+<br>
+- For both classifiers we chose our threshold to be 0.5.<br>
+<br>
+Before we begin we would like to see how intertwined the 1's and the 7's are, to do so, we will reduce the dimensions to 3 using PCA and plot against the PC's.
+
+Try to play with and plot to see different point of view:
+<br>
+```{r pca plot, echo=TRUE, fig.align="center", message=FALSE, warning=FALSE}
+
+pc = prcomp(X_train, rank. = 3)
+d = data.frame(pc$x,y=ifelse(y_train==1, "1", "7"))
+# ggplot(d) + geom_text(aes(x=PC1, y=PC2, label=y, color=y),alpha=0.5)
+w = plot_ly(data=d, x=~PC1, y=~PC2, z=~PC3,
+        type="scatter3d", mode="text", color=~y, text=~y,  alpha=0.5,
+        colors = c("1" = "#FF5733",
+                          "7" = "#4A235A"))
+w
+# htmltools::tagList(list(w))
+```
+<br>
+ - It is interesting to see that the 2 classes are hardly intertwined with one another, and we would assume the classifier should be able to classify each digit with high degree of accuracy, as they appear to be linearly seperable.<br>
+
+```{r 1.1 Classifiers NB, message=FALSE, warning=FALSE, include=FALSE}
+
+train = cbind(X_train, y = as.factor(y_train))
+test = cbind(X_test, y=as.factor(y_test))
+
+#naive bayes model
+nbmodel = naiveBayes(y ~ ., data = train) 
+
+#naive bayes predictions
+nbpred = predict(nbmodel, newdata = test, type = "raw")
+
+nbpred_train = predict(nbmodel, newdata = train, type = "raw")
+
+
+```
+
+
+```{r 1.1 Classifiers Logistic, echo=TRUE, message=FALSE, warning=FALSE}
+
+#find best lambda with cross-validation over lasso
+#data.matrix function over X_train is needed since glmnet input can't be a dataframe
+
+fit = cv.glmnet(data.matrix(X_train),y_train,family="binomial",alpha=1)
+
+
+minlambda = fit$lambda.min
+
+fit = glmnet(data.matrix(X_train) ,y_train ,family="binomial",alpha=1, lambda = minlambda)
+
+p_logistic = predict(fit,data.matrix(X_test), type = "response")
+
+p_logistic_train = predict(fit, data.matrix(X_train), type="response")
+
+```
+<br>
+
+
+##### 1.2 Calculating Confusion Matrix
+- Implementing a confusion matrix function
+
+ - We decided to display the confusion matrix both in terms of the total predictions made for each digit and in a proportion to the class size normalized version.<br>
+ - The class size is based on the actual number of images for each digit, and the row-wise proportion is the normalization for each digit class of the predictions.<br>
+ The row normalization makes it easier for us to interpret the results by adjusting for class size.<br>
+ - We were debating which confusion matrix is more appropriate to show, and as a compromise we decided to show both as each table has its own advantagenes (and its free).<br>
+
+ - Since dividing the `1`'s and the `7`'s as positive and negative classes was arbitrary, from the accuracy measures we have seen in class, the most appropriate one is seems to be the Accuracy:<br>
+
+$Accuracy=\dfrac{Correct\ Predictions}{Total\ Predictions}=\dfrac{TP+TN}{TP+TN + FP + FN}$
+<br>
+```{r 1.2 Confusion Matrix function, echo=TRUE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE}
+
+
+confused_mat <- function(y_test, y_hat) {
+    x <- factor(y_test)
+    y <- factor(y_hat)
+
+    commonLevels <- sort(unique(c(levels(x), levels(y))), TRUE)
+
+    x <- factor(x, levels = commonLevels, labels=c(1,7))
+    y <- factor(y, levels = commonLevels, labels=c(1,7))
+
+    cm = table(`Actual`=x, `Predicted`=y) 
+    return (cm)
+}
+
+draw_confusion_matrix <- function(cm, classifier='') {
+
+  goodcolor = '#1E75B7'
+  badcolor = '#DF5D13'
+  
+  # layout(matrix(c(1,1,2)))
+  # par(mar=c(2,2,2,2))
+  plot(c(100, 345), c(300, 450), type = "n", xlab="", ylab="", xaxt='n', yaxt='n')
+  title(sprintf('CONFUSION MATRIX: %s',classifier), cex.main=2)
+
+  # create the matrix 
+  rect(150, 430, 240, 370, col=goodcolor)
+  text(195, 435, 'Digit 1', cex=1.2)
+  rect(250, 430, 340, 370, col=badcolor)
+  text(295, 435, 'Digit 7', cex=1.2)
+  text(125, 370, 'Actual', cex=1.3, srt=90, font=2)
+  text(245, 450, 'Predicted', cex=1.3, font=2)
+  rect(150, 305, 240, 365, col=badcolor)
+  rect(250, 305, 340, 365, col=goodcolor)
+  text(140, 400, 'Digit 1', cex=1.2, srt=90)
+  text(140, 335, 'Digit 7', cex=1.2, srt=90)
+
+  # add in the cm results 
+  res <- as.numeric(cm)
+  text(195, 400, paste0("TP=",res[1]), cex=1.6, font=2, col='white')
+  text(195, 335, paste0("FP=",res[2]), cex=1.6, font=2, col='white')
+  text(295, 400, paste0("FN=",res[3]), cex=1.6, font=2, col='white')
+  text(295, 335, paste0("TN=",res[4]), cex=1.6, font=2, col='white')
+
+}
+```
+
+```{r 1.2 Confusion Matrix calc, echo=TRUE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE}
+
+nb_preds = as.numeric(nbpred[,2] > .5)
+nb_preds_train = as.numeric(nbpred_train[,2] > .5)
+
+nbcm =confused_mat(y_test, nb_preds) 
+nbcm_train = confused_mat(y_train, nb_preds_train)
+
+log_preds = as.numeric(p_logistic >.5)
+log_preds_train = as.numeric(p_logistic_train > .5)
+
+logcm =confused_mat(y_test, log_preds)  
+logcm_train = confused_mat(y_train, log_preds_train)  
+```
+**Confusion Matrix: Train set**<br>
+
+```{r 1.2 Confusion Matrix train, echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE}
+
+par(mfrow=c(2,2))
+  draw_confusion_matrix(nbcm_train, 'Naive Bayes Train')
+  draw_confusion_matrix(round(nbcm_train/rowSums(nbcm_train),4),'Naive Bayes Train (%)')
+  draw_confusion_matrix(logcm_train, 'Logistic Train')
+  draw_confusion_matrix(round(logcm_train/rowSums(logcm_train),4), 'Logistic Train (%)')
+
+log_acc_train = round((logcm_train[1,1] + logcm_train[2,2])/sum(logcm_train),4)
+nbcm_acc_train = round((nbcm_train[1,1] + nbcm_train[2,2])/sum(nbcm_train),4)
+
+
+```
+<br>
+
+Logistic Regression Accuracy (Train) = `r toString(log_acc_train)`<br>
+Naive Bayes Accuracy (Train) = `r toString(nbcm_acc_train)`
+<br>
+
+**Confusion Matrix: Test Set**<br>
+```{r 1.2 Confusion Matrix test, echo=TRUE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE}
+par(mfrow=c(2,2))
+  draw_confusion_matrix(nbcm, 'Naive Bayes Test')
+  draw_confusion_matrix(round(nbcm/rowSums(nbcm),4),'Naive Bayes Test (%)')
+  draw_confusion_matrix(logcm, 'Logistic Test')
+  draw_confusion_matrix(round(logcm/rowSums(logcm),4), 'Logistic Test (%)')
+
+log_acc = round((logcm[1,1] + logcm[2,2])/sum(logcm),4)
+nbcm_acc = round((nbcm[1,1] + nbcm[2,2])/sum(nbcm),4)
+
+```
+
+<br>
+
+
+Logistic Regression Accuracy (Test) = `r toString(log_acc)`<br>
+Naive Bayes Accuracy (Test) = `r toString(nbcm_acc)`<br>
+
+
+<br>
+- As seen in the tables above both classifier manage to predict accurately for both digits, i.e, the True-Negative and True-Positive are very high.
+- We can see that our two models aren't suffering from overfitting.
+- In the NB classifier (Test Set)the False Positive rate is almost double that of the False Negative, (1 = True, 7 = False). In the logistic the difference is even more significant even though the logistic regression seems to predict overall more accurately.
+- As a corolarry, In both classifiers there are more inaccurate 7's than inaccurate 1's, which leads us to believe that there is some difficulty in predicting 7's.
+<br>
+
+##### 1.3 Response Operating Curve
+
+To X and Y axis in the ROC curve are FPR and TPR by the following formulas:<br>
+$TPR = \dfrac{TP}{P} = \dfrac{TP}{TP+FN}$<br>
+<br>
+$FPR = \dfrac{FP}{N} = \dfrac{FP}{TN+FP}$
+
+<br>
+```{r 1.3 ROC_data, echo=TRUE, message=FALSE, warning=FALSE}
+
+
+roc_data <- function(y_test, predictions, thresh_seq) {
+  
+  TPR=c()
+  FPR=c()
+  
+  for (i in 1:length(thresh_seq)){
+    
+    y_pred = as.numeric(predictions>thresh_seq[i])  
+    
+    cm = confused_mat(y_test, y_pred)
+    
+    TP = cm[2,2]
+    TN = cm[1,1]
+    FN = cm[2,1]
+    FP = cm[1,2]
+
+    
+    TPR_t = TP/(TP+FN)
+    FPR_t = FP/(TN+FP)
+    
+    FPR[i] = FPR_t
+    TPR[i] = TPR_t
+  }
+  
+  df = data.frame(threshold = thresh_seq, TPR=TPR, FPR=FPR)
+  return(df)
+}
+```
+
+```{r roc, echo=TRUE, message=FALSE, warning=FALSE}
+l = 1000
+
+# nb_diff = nbpred[,2]-nbpred[,1]
+
+nb_thresh = c(-1e-100, sort(unique(nbpred[,1])), 1.1) 
+df_ROC_nb = roc_data(y_test, nbpred[,2], nb_thresh)
+ 
+log_thres = seq(from=0, to=1, length.out = l)
+df_ROC_logistic = roc_data(y_test, p_logistic, log_thres)
+
+```
+
+```{r roc plot, echo=TRUE, fig.align="center", fig.height=5, fig.width=10, message=FALSE, warning=FALSE}
+df_ROC_logistic$type = 'Logistic Regression'
+df_ROC_nb$type = "Naive Bayes"
+
+df_roc = rbind(df_ROC_nb, df_ROC_logistic)
+
+roc_plot =function(df, type){
+g =ggplot()+ geom_line(df,mapping = aes(x=FPR, y=TPR,color=type),size=1, alpha=0.5) + 
+  geom_point() + ylim(0,1) + xlim(0,1) + 
+ geom_abline(slope = 1, intercept = 0, linetype='dashed',  color='orangered') + 
+  theme_bw(base_size = 15)
+  
+  return(g)
+}
+
+roc_plot(df_roc)
+
+# #zoom in
+# ggplot(df_roc,aes(x=FPR, y=TPR, color=type)) + geom_line(alpha=0.5) +
+#   geom_point(shape=21,  fill="white") +
+#   ylim(0.9,1) + theme_bw()  
+```
+
+<br>
+- The area under the curve gives us information regurding the quality of the classifier, specifically, we want our classifiers TPR to increase at faster rate than the FPR for the different thresholds.
+
+- We can see that the Logistic Regression model can predict better the digits, respectively to what we saw in earlier in the confusion matrix and the accuracies.
+<br>
+
+##### 1.4 Incorrect Classifications
+<br>
+ - It apperas that the Logistic classifer is the more accurate classifier.<br>
+ - Next, we want to see if we can recognize why it failed on some of the wrong predictions.
+<br>
+```{r 1.4 Classified Examples, echo=TRUE, fig.align="center", message=FALSE, warning=FALSE}
+
+indices_test = which(log_preds!=y_test)
+
+xxx= X_test[indices_test,]
+
+p_labels = ifelse(log_preds[indices_test]==1,1,7)
+real_labels = ifelse(y_test[indices_test]==1,1,7)
+post_prob = round(p_logistic[indices_test],4)
+set.seed(2204)
+par(mfrow=c(2,2), mar=c(5,5,5,5))
+for (j in sample(1:nrow(xxx), 4)){
+  show_digit(xxx[j,], 
+           main=sprintf('Real Digit: %s\nPredicted Digit: %s\nP(Y=1|X)=%s',
+                        real_labels[j],
+                        p_labels[j],
+                        post_prob[j]))
+}
+
+```
+<br>
+
+**Results (from top-left clockwise):**
+1. We would guess that the prediction failed here because the slope of the vertical line in the digit is pointing outward and not inward, as one would usually expect of a 7.<br>
+
+2. We see that part of the top of the digit is missing, and it easy to see why this would be classified as a 1.<br>
+
+3. Though for us it would seem obvious that the digit is a 7, our guess is perhaps since the digit is relatively narrow for a 7, thus the classifier tagged it as a 1.<br>
+
+4. In this sample we assume that the horizontal line at the top and bottom of the digit resembles the more to the 7's in the data than the 1's.
+<br>
+
+**Viewing the coeffients heatmap:**
+<br>
+```{r echo=TRUE, fig.align="center", message=FALSE, warning=FALSE, paged.print=FALSE}
+coefs = matrix(as.numeric(fit$beta), ncol=28)
+
+# show_digit(coefs)
+ggplot(melt(coefs), aes(Var1,-Var2, fill=value)) + geom_tile() + scale_fill_gradient2(low='darkred', mid='white', high='darkgreen')+theme_void()
+```
+
+<br>
+- The areas around the green/positive pixels help our classifier predict the images as 1's, while the areas around the red/negative pixels pull the digit towards a 7 classification/prediction.<br>
+
+
+
+##### 1.5 Negative Digit 1 example
+
+- Both our classifier models were fitted on black digits with a white background, we would expect the dark background image not to preform well in our models and we would expect a much higher FP and FN.
+
+- In the Logistic classifer we can assume that since now most of the values of $X_{ij}$ are 255 (for any $x_i$), the classifier will classify almost every digit as 7, regardless the actual class.
+
+- In the naive bayes we can also expect that the classifier will mistake a lot, since the $x_j$ values are completley different now.
+
+- In conclusion, both of our models were trained on data with relatively low "black" areas in proportion to the white areas, and now when we test on an invert image, we can guess that both of the classifers will have difficulties.
+
+- In order to test these assumptions we negate the test data explanatory variables and predict the values using the test response variables.
+<br>
+
+```{r Negative Digit, echo=TRUE, fig.align="center", fig.height=6, fig.width=8, message=FALSE, warning=FALSE, paged.print=FALSE}
+neg_train = abs(255 - X_test)
+
+neg_hat_lasso = as.numeric(predict(fit, data.matrix(neg_train), type='response')>0.5) 
+
+neg_hat_nb = predict(nbmodel, neg_train) # negative digit in NB model
+
+
+```
+
+```{r echo=TRUE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+neg_cm = confused_mat(y_test, neg_hat_nb)
+
+neg_cm_lasso = confused_mat(y_test, neg_hat_lasso)
+
+par(mfrow=c(2,2))
+draw_confusion_matrix(neg_cm, "NB Negative Colors")
+draw_confusion_matrix(round(neg_cm/rowSums(neg_cm),4),"NB Negative Colors(%)")
+
+draw_confusion_matrix(neg_cm_lasso, "Logistic Negative")
+draw_confusion_matrix(round(neg_cm_lasso/rowSums(neg_cm_lasso),4),"Logistic Negative(%)")
+
+```
+
+<br>
+- As seen in the table our model completely fails to correctely classify the 1's. More specifically, both classifiers almost always classify a digit as `7` regardless the actual value.
+
+
+>>>>>>> d53da803558b7eb20b8dde9be191a2099ea74d97
 <br>
