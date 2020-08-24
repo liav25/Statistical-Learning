@@ -1,8 +1,14 @@
 ---
 title: "Lab 4 - Mnist Data"
+knit: (function(input_file, encoding) {
+  out_dir <- 'docs';
+  rmarkdown::render(input_file,
+ encoding=encoding,
+ output_file=file.path(dirname(input_file), out_dir, 'index.html'))})
 author: "Liav Alter and Yedidia Weilner"
 date: "24 באוגוסט 2020"
 output: html_document
+
 ---
 
 ```{r Librarys, message=FALSE, warning=FALSE, include=FALSE}
@@ -25,6 +31,7 @@ library(class)
 library(latex2exp)
 library(htmltools)
 library(plotly)
+
 ```
 
 
@@ -34,7 +41,7 @@ library(plotly)
 
 <br>
 
-```{r load_MNIST, message=FALSE, warning=FALSE, include=FALSE}
+```{r load_MNIST, echo=TRUE, message=FALSE, warning=FALSE}
 
 source("load_MNIST.R")
 
@@ -55,32 +62,6 @@ y_train = ifelse(train_data$y==1, 1, 0)
 X_test = test_data[,-785]
 #create y test boolean vector
 y_test = ifelse(test_data$y==1, 1, 0)
-
-```
-```{r}
-
-X = matrix(rexp(500, rate=.1), ncol=10)
-
-# 1. scale and center
-xs = scale(X, scale=T, center=T)
-
-# 2.  calculate covariance matrix
-S = cov(xs)
-
-# 3. calculate cov eigenvectors
-ev = eigen(S)
-
-
-prc = prcomp(X, scale=T)
-
-ev$vectors
-prc$rotation
-
-# 4. calculate X(nxp) @ eigenvectors(pxp) - this is the PCA matrix
-XS = (xs %*% ev$vectors)
-
-prc$x
-XS
 
 ```
 
@@ -107,7 +88,7 @@ Before we begin we would like to see how intertwined the 1's and the 7's are, to
 
 Try to play with and plot to see different point of view:
 <br>
-```{r pca plot, echo=FALSE, message=FALSE, warning=FALSE, fig.align="center"}
+```{r pca plot, echo=TRUE, fig.align="center", message=FALSE, warning=FALSE}
 
 pc = prcomp(X_train, rank. = 3)
 d = data.frame(pc$x,y=ifelse(y_train==1, "1", "7"))
@@ -139,7 +120,7 @@ nbpred_train = predict(nbmodel, newdata = train, type = "raw")
 ```
 
 
-```{r 1.1 Classifiers Logistic, message=FALSE, warning=FALSE, include=FALSE}
+```{r 1.1 Classifiers Logistic, echo=TRUE, message=FALSE, warning=FALSE}
 
 #find best lambda with cross-validation over lasso
 #data.matrix function over X_train is needed since glmnet input can't be a dataframe
@@ -171,7 +152,7 @@ p_logistic_train = predict(fit, data.matrix(X_train), type="response")
 
 $Accuracy=\dfrac{Correct\ Predictions}{Total\ Predictions}=\dfrac{TP+TN}{TP+TN + FP + FN}$
 <br>
-```{r 1.2 Confusion Matrix function, echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE}
+```{r 1.2 Confusion Matrix function, echo=TRUE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE}
 
 
 confused_mat <- function(y_test, y_hat) {
@@ -219,7 +200,7 @@ draw_confusion_matrix <- function(cm, classifier='') {
 }
 ```
 
-```{r 1.2 Confusion Matrix calc, echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE}
+```{r 1.2 Confusion Matrix calc, echo=TRUE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE}
 
 nb_preds = as.numeric(nbpred[,2] > .5)
 nb_preds_train = as.numeric(nbpred_train[,2] > .5)
@@ -255,7 +236,7 @@ Naive Bayes Accuracy (Train) = `r toString(nbcm_acc_train)`
 <br>
 
 **Confusion Matrix: Test Set**<br>
-```{r 1.2 Confusion Matrix test, echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE}
+```{r 1.2 Confusion Matrix test, echo=TRUE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE}
 par(mfrow=c(2,2))
   draw_confusion_matrix(nbcm, 'Naive Bayes Test')
   draw_confusion_matrix(round(nbcm/rowSums(nbcm),4),'Naive Bayes Test (%)')
@@ -289,7 +270,7 @@ $TPR = \dfrac{TP}{P} = \dfrac{TP}{TP+FN}$<br>
 $FPR = \dfrac{FP}{N} = \dfrac{FP}{TN+FP}$
 
 <br>
-```{r 1.3 ROC_data, message=FALSE, warning=FALSE, include=FALSE}
+```{r 1.3 ROC_data, echo=TRUE, message=FALSE, warning=FALSE}
 
 
 roc_data <- function(y_test, predictions, thresh_seq) {
@@ -321,7 +302,7 @@ roc_data <- function(y_test, predictions, thresh_seq) {
 }
 ```
 
-```{r roc, message=FALSE, warning=FALSE, include=FALSE}
+```{r roc, echo=TRUE, message=FALSE, warning=FALSE}
 l = 1000
 
 # nb_diff = nbpred[,2]-nbpred[,1]
@@ -334,7 +315,7 @@ df_ROC_logistic = roc_data(y_test, p_logistic, log_thres)
 
 ```
 
-```{r roc plot, echo=FALSE, fig.height=5, fig.width=10, message=FALSE, warning=FALSE, fig.align="center"}
+```{r roc plot, echo=TRUE, fig.align="center", fig.height=5, fig.width=10, message=FALSE, warning=FALSE}
 df_ROC_logistic$type = 'Logistic Regression'
 df_ROC_nb$type = "Naive Bayes"
 
@@ -368,7 +349,7 @@ roc_plot(df_roc)
  - It apperas that the Logistic classifer is the more accurate classifier.<br>
  - Next, we want to see if we can recognize why it failed on some of the wrong predictions.
 <br>
-```{r 1.4 Classified Examples, echo=FALSE, fig.align="center", message=FALSE, warning=FALSE}
+```{r 1.4 Classified Examples, echo=TRUE, fig.align="center", message=FALSE, warning=FALSE}
 
 indices_test = which(log_preds!=y_test)
 
@@ -402,7 +383,7 @@ for (j in sample(1:nrow(xxx), 4)){
 
 **Viewing the coeffients heatmap:**
 <br>
-```{r echo=FALSE, fig.align="center", message=FALSE, warning=FALSE, paged.print=FALSE}
+```{r echo=TRUE, fig.align="center", message=FALSE, warning=FALSE, paged.print=FALSE}
 coefs = matrix(as.numeric(fit$beta), ncol=28)
 
 # show_digit(coefs)
@@ -427,7 +408,7 @@ ggplot(melt(coefs), aes(Var1,-Var2, fill=value)) + geom_tile() + scale_fill_grad
 - In order to test these assumptions we negate the test data explanatory variables and predict the values using the test response variables.
 <br>
 
-```{r Negative Digit, echo=FALSE, fig.align="center",fig.width=8, fig.height=6, message=FALSE, warning=FALSE, paged.print=FALSE}
+```{r Negative Digit, echo=TRUE, fig.align="center", fig.height=6, fig.width=8, message=FALSE, warning=FALSE, paged.print=FALSE}
 neg_train = abs(255 - X_test)
 
 neg_hat_lasso = as.numeric(predict(fit, data.matrix(neg_train), type='response')>0.5) 
@@ -437,7 +418,7 @@ neg_hat_nb = predict(nbmodel, neg_train) # negative digit in NB model
 
 ```
 
-```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, paged.print=FALSE}
+```{r echo=TRUE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, paged.print=FALSE}
 
 neg_cm = confused_mat(y_test, neg_hat_nb)
 
