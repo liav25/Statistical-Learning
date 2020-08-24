@@ -116,7 +116,7 @@ nbpred = predict(nbmodel, newdata = test, type = "raw")
 
 nbpred_train = predict(nbmodel, newdata = train, type = "raw")
 
-
+# note
 ```
 
 
